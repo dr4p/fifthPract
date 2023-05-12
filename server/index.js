@@ -7,7 +7,8 @@ const cors = require('cors')
 const http = require("http");
 const User = require('./database/models/user.model')
 const Token = require('./database/models/token.model')
-
+const jwt = require('jsonwebtoken');
+const Auth = require('./database/auth/auth')
 
 
 const app = express()
@@ -21,25 +22,10 @@ http.createServer(app).listen(PORT, () => {
 
 initDB();
 
-app.use('/todos', async (req, res, next) => {
-    try {
-        const token = await Token.findByPk(req.body.token)
-        const user = await User.findByPk(req.body.id)
-        console.log(token.value)
-        console.log(req.body.token)
-        if (token.value && req.body.token === '2d2aa131-c2af-4c86-a338-6d5c9aef885c') {
-            next()
-        } else {
-            res.status(500).json({message: "Токен не найден"})
-        }
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-})
-
+app.use('/todos', Auth)
 app.get("/todos", async (req, res) => {
     try {
-        const todos = await Task.findAll();
+        const todos = await Task.findAll({where: {userId: req.userId}});
         res.json({
             todos
         })
@@ -69,7 +55,8 @@ app.post("/todos", async (req, res) => {
     try {
         const todo = await Task.create({
             title : req.body.title,
-            description : req.body.description
+            description : req.body.description,
+            userId: req.userId
         })
         res.json({
             todo
@@ -147,13 +134,24 @@ app.post('/auth', async (req, res) => {
     try {
         const user = await User.findOne({where : {email: req.body.email, password: req.body.password}})
         if (user) {
-            const token = await Token.create({
-                userId: user.id
-            })
-            res.json(token)
+            const accessToken = jwt.sign({
+            id: user.id
+            },
+                process.env.TOKEN_KEY,
+                {expiresIn: '24h'})
+            await Token.create({})
+            res.json({accessToken})
+
         } else {
             res.status(400).json({message: 'Некорретные данные'})
         }
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+})
+app.get('/logout', Auth, (req, res) => {
+    try {
+        res.json({message: 'Вы успешно вышли'})
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
